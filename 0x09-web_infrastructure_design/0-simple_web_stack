@@ -1,0 +1,39 @@
+User (laptop/phone) → Internet (cloud icon) → DNS → Server IP 8.8.8.8
+
+Server box with:
+
+Nginx (Web Server)
+
+Application Server (e.g., Gunicorn, PHP-FPM, etc., depending on language)
+
+Application Files (code)
+
+MySQL Database
+
+Domain Name: www.foobar.com (A record → 8.8.8.8)
+
+Flow:
+User types www.foobar.com → DNS finds IP → connects to Server → Nginx gets request → sends to Application Server → fetch data from MySQL → Application Server builds response → Nginx sends it back to user.
+
+Explanation
+The server is just a big, powerful computer that’s always on, waiting for visitors.
+
+The domain name (foobar.com) is like your house’s nickname, so people don’t have to remember the long number (IP address).
+
+The DNS record for www is an A record — it’s like a contact card that says “www.foobar.com lives at 8.8.8.8”.
+
+The web server (Nginx) is like a receptionist — it picks up calls (HTTP requests) and sends them to the right worker.
+
+The application server is like the chef in a restaurant — it takes orders from the receptionist and cooks the meal (runs the code).
+
+The application files are your recipes — the instructions for how to cook.
+
+The database (MySQL) is like a fridge where you store all your ingredients (data).
+
+Issues with This Setup
+SPOF (Single Point of Failure) – one server goes down, whole site is gone.
+
+Downtime for maintenance – restarting web server to deploy code = site offline temporarily.
+
+Cannot scale – too much traffic can overload the single server.
+The server and user’s computer talk using HTTP over TCP/IP — like speaking the same language with special rules.
