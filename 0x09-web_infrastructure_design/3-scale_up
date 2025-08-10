@@ -1,0 +1,120 @@
+User (browser) → Internet → DNS (www.foobar.com → virtual IP of LB pair)
+
+Load Balancer cluster (HAProxy + keepalived) — two nodes: LB1 and LB2 with a shared virtual IP (VIP) for www.foobar.com
+
+Draw LB1 and LB2 side‑by‑side, a small double‑headed arrow between them labeled keepalived (VRRP) to show they form a cluster.
+
+Web server tier — one or more servers running Nginx (draw Server W1, W2...)
+
+Application server tier — one or more servers running the app runtime (e.g., Gunicorn, Node, PHP-FPM) — draw App1, App2...
+
+Database tier — a dedicated MySQL server (Primary) and optionally Replica(s)
+
+Connect arrows:
+
+VIP → LB cluster → (round robin / leastconn) → web servers → app servers → DB Primary (writes), DB replica(s) (reads)
+
+Add labels for configuration/state:
+
+LB cluster uses shared VIP for DNS
+
+Health checks: LB → web servers (HTTP healthcheck)
+
+Sticky sessions? label if needed (optional)
+
+Add small notes: “Application files: deployed to App servers (or stored in central repo/CI/CD / shared storage)”.
+
+Requirements:
+1 new server — used to separate components or increase capacity (explain below).
+
+Load balancer (HAProxy) configured as a cluster with the other one — two LBs in active/standby (VRRP) or active/active depending on configuration.
+
+Component split — run web server, application server, and database each on their own dedicated servers (not co-located on same machine).
+
+Simple Explanation:
+Before, some of the stuff lived in the same house. Now we give each job its own house:
+
+One house just greets people (web server).
+
+One house cooks the food (application server).
+
+One big safe pantry keeps the ingredients (database).
+
+We add a second traffic cop (load balancer) so the traffic cop won’t stop working if one gets sleepy — they share a single phone number (VIP) so people always reach the site.
+
+For every additional element — why we add it
+Second LB (clustered HAProxy + keepalived): removes load-balancer single point of failure. If LB1 dies, LB2 takes the VIP and traffic continues.
+
+Dedicated web server(s) (Nginx): handle static files, SSL (if terminating), caching, and fast request routing. Offloads lightweight tasks from app servers.
+
+Dedicated application server(s): run the business logic and dynamic content. Keeps runtime dependencies and memory/CPU intensive work away from web servers and DB.
+
+Dedicated DB server: isolates I/O and storage pressure, enabling stronger consistency and easier backups and replication.
+
+One extra server (the required “add 1 server”): use it to separate one of the roles (for example add another application server or a dedicated web server), improving redundancy and capacity.
+
+Load balancer cluster details
+How the cluster works: use keepalived (VRRP) with two HAProxy nodes sharing a VIP. One node is Master (owns VIP) and the other is Backup. If Master fails, Backup moves VIP to itself automatically.
+
+Active‑Passive vs Active‑Active:
+
+Active‑Passive: One LB serves traffic (active), the other waits (passive). Simpler and common with VRRP + single VIP — failover occurs on failure.
+
+Active‑Active: Both LBs accept traffic (often fronted by DNS round-robin or anycast). Needs session/connection sync or stateless apps and careful health checking. Better throughput but more complex.
+
+Which to choose here: Active‑Passive with keepalived + HAProxy is simple and suitable for most setups. If you need higher throughput and lower latency, consider Active‑Active with shared state or anycast.
+
+Health checks & session handling
+Health checks: LB probes web servers (HTTP GET /health or /status). If a server fails healthchecks it is removed from rotation.
+
+Session stickiness: If your app uses in-memory sessions, either enable sticky sessions on LB or move sessions to shared store (Redis) so app servers remain stateless.
+
+Application server vs Web server — simple definition
+Web server (Nginx):
+
+Purpose: handle HTTP(S) connections, serve static files, do caching, and reverse‑proxy to app servers.
+
+Fast at serving files and managing many concurrent connections.
+
+Application server (Gunicorn, Node, PHP-FPM, etc.):
+
+Purpose: execute your app code (generate HTML, access DB, run business logic).
+
+Often behind the web server, receives proxied requests and returns dynamic responses.
+
+Why split them?
+
+Different tuning: Nginx is optimized for connections and static content, app servers are optimized for CPU/logic and may crash or be memory hogs. Splitting lets you scale each independently and isolate failures.
+
+Deployment & files
+Application files should be deployed to app servers via CI/CD (e.g., GitHub Actions) or stored on shared read-only storage (NFS, object storage, or container images) so deployments are reproducible and consistent.
+
+Keep web servers minimal — static assets can be served from CDN.
+
+Issues to mention (what to call out in interview)
+SPOFs remaining:
+
+If DB Primary is single for writes, it remains a SPOF for writes unless you add automated failover.
+
+If shared storage is a single node (e.g., single NFS), that's a SPOF.
+
+Complexity:
+
+More servers = more things to manage (monitoring, logging, config management).
+
+Consistency & sessions:
+
+Stickiness or session sharing must be handled if apps are stateful.
+
+Network latency:
+
+More hops (LB → web → app → db) adds latency — optimize with locality and proper health checks.
+
+Quick scaling guidance
+Scale web servers horizontally for handling more concurrent connections and static content (cheap).
+
+Scale app servers horizontally for CPU/logic; ensure app is stateless or uses shared session store.
+
+Scale database vertically for writes or implement sharding / clustered DB solutions for write scaling.
+
+Use CDN for static assets to reduce load on web tier.
