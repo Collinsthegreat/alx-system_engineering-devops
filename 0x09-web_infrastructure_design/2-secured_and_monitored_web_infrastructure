@@ -1,0 +1,127 @@
+User (browser) → Internet → DNS (www.foobar.com → IP of Load Balancer)
+
+Perimeter Firewall (FW1) — sits in front of Load Balancer
+
+Load Balancer (HAProxy) — TLS termination or passthrough (see notes)
+
+Three public-facing servers (Server A, B, C). On each server draw:
+
+Host-based firewall (FW2 / FW3 / FW4) — one per server (or label host firewall on each)
+
+Nginx (Web Server)
+
+Application server (app code)
+
+Monitoring client / agent (e.g., Sumo Logic or Prometheus exporter)
+
+Application files (code)
+
+Private network for DB traffic → MySQL Primary (accepts writes) and optionally Replica(s) for reads (draw Primary DB in a protected subnet)
+
+DB Firewall — restricts DB access to only app servers and LB health checks
+
+SSL Certificate attached to the load balancer (and optionally also installed on app servers if you choose end-to-end TLS)
+
+Monitoring backend / SIEM (cloud service icon: SumoLogic, Datadog, Prometheus + Grafana) — arrows from monitoring agents on each server to the monitoring backend (secure channel)
+
+Add labels: “HTTPS” on client → LB connection, “Optional TLS (re-encrypt)” between LB → app servers if you choose end-to-end encryption.
+
+The perimeter firewall is like a guarded gate that only lets good visitors in.
+
+The load balancer is a traffic cop that sends visitors to one of three identical houses so none get too crowded.
+
+Each house (server) has a tiny gate (host firewall), a door (web server Nginx), and a chef (application server) that makes the web page from recipes (application files).
+
+The SSL certificate is like a secret handshake so the browser and site talk privately (no eavesdroppers).
+
+The monitoring clients are tiny watchers on each house that whisper what’s happening to a big guard center (SumoLogic/monitoring service).
+
+The database is your big pantry where you store stuff. The primary pantry is where you put new food (writes). Replicas are extra pantries that get copies of the food.
+
+Why each additional element is added:
+Perimeter firewall (FW1): block unwanted internet traffic (only allow ports 80/443 to LB, restrict admin ports to VPN).
+
+Host-based firewalls (FW on Server A/B/C): limit lateral movement and only allow necessary inbound ports (e.g., 443 from LB, 22 from admin network).
+
+DB firewall (or network ACL): ensure only app servers (and DB replication hosts) can connect to MySQL.
+
+SSL certificate: encrypts traffic between the visitor and your site (confidentiality & integrity).
+
+Monitoring clients (one per server): collect metrics, logs, traces from each server and push or expose them to the monitoring backend for observability.
+
+Three servers: redundancy (if one fails, others pick up), better capacity, and distribution of load.
+
+What are firewalls for
+Firewalls filter traffic based on rules (ports, IPs, protocols).
+
+They reduce attack surface (block SSH from the public, allow only LB to talk to web servers on 443, allow only app servers to talk to DB on 3306).
+
+They protect from simple network attacks and limit lateral movement after compromise.
+
+Why serve traffic over HTTPS
+HTTPS (TLS) encrypts requests/responses so attackers can’t read or tamper with user data.
+
+Provides authentication of your site (clients can confirm they talk to www.foobar.com).
+
+Required for modern browsers (secure cookies, HTTP/2, and many APIs require HTTPS).
+What monitoring is used for and how it collects data
+Purpose: detect outages, performance issues, security problems; collect metrics (CPU, memory, QPS), logs (access/error), traces (request latency), and alert on failures.
+
+How it collects data (typical patterns):
+
+Agent-based push — install an agent/collector on each server (e.g., Sumo Logic collector, Datadog Agent, New Relic agent). Agents collect logs, system metrics and push securely (HTTPS) to the cloud collector.
+
+Pull/scrape model — for metrics like Prometheus: you run a Prometheus server that scrapes metrics endpoints (e.g., http://server:9100/metrics or nginx_exporter) at intervals.
+
+Log forwarding — agents read application and access logs and stream them to the monitoring service or SIEM.
+
+Tracing — instrument app to send traces to an APM/tracing backend (optional).
+How to monitor web server QPS (queries per second)
+Options (pick one or combine):
+
+Nginx stub_status + Prometheus:
+
+Enable Nginx stub_status module or use an exporter (nginx-vts or nginx-prometheus-exporter).
+
+Prometheus scrapes exporter endpoint and you write a PromQL query for QPS (e.g., rate(nginx_http_requests_total[1m])).
+
+Access log parsing:
+
+Ship Nginx access logs to monitoring (SumoLogic/ELK); run a query that counts requests per minute.
+
+Load balancer stats:
+
+HAProxy exposes stats endpoint (or a Prometheus exporter) you can scrape for requests per second at LB level.
+
+Agent metrics:
+
+Many cloud agents auto-collect webserver metrics including request rates.
+
+Issues with this infrastructure:
+SPOF locations:
+
+If you have only one Load Balancer (no active-active LB pair) — LB is SPOF.
+
+Primary DB for writes is SPOF unless you use multi-primary or automated failover with quorum.
+
+Security issues if misconfigured:
+
+If you terminate SSL at LB and do not re-encrypt traffic to backends, internal traffic is plaintext.
+
+Missing firewall rules exposes admin or DB ports to internet.
+
+No monitoring/alerting: without monitoring, failures and performance regressions are detected late.
+
+Scaling & capacity: single DB for writes blocks horizontal write scaling.
+
+Practical recommendations:
+Use HA for Load Balancer (two HAProxy nodes with VRRP/keepalived) for LB high-availability (eliminate LB SPOF).
+
+Use TLS re-encryption LB → backends or mutual TLS for end-to-end encryption.
+
+Introduce automated DB failover (e.g., MHA, Orchestrator, Patroni) or use a managed DB with built-in HA.
+
+Centralize logs and metrics: use agents to push logs/metrics to SumoLogic/Datadog/Prometheus+Grafana and set alerts for QPS, error rates, latency, CPU, disk, and replication lag.
+
+Harden hosts: disable unused ports, use host firewall (ufw/iptables), apply patches, use IAM and SSH key management.
+
